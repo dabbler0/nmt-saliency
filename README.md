@@ -16,3 +16,11 @@ To see an example of usage, see `example.lua`, which takes arguments `-model` (a
 Some examples of saliency in action from an English-Spanish translation network:
   - [a neuron that detects whether a token is inside parentheses](https://rawgithub.com/dabbler0/saliency/master/paren-saliencies.html)
   - [a neuron that seems to detect whether a token is inside a negated clause](https://rawgithub.com/dabbler0/saliency/master/negation-saliencies.html)
+
+In these examples saliency was taken at the end of each table with respect to all of the prior tokens in the sentence. Each file contains 400 example sentence with saliency taken at a random token.
+
+Some select examples from the negated clause neuron:
+
+![Recognizing the word "not" activating](https://rawgithub.com/dabbler0/saliency/master/saliency-example-1.png)
+![Recognizing the word "excluding" activating](https://rawgithub.com/dabbler0/saliency/master/saliency-example-2.png)
+![Recognizing the word "as" and a comma stopping](https://rawgithub.com/dabbler0/saliency/master/saliency-example-3.png)
