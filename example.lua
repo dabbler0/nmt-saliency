@@ -123,6 +123,8 @@ function deep_totable(tbl)
   return result
 end
 
+-- Get all saliencies from all methods.
+-- This can be modified to exclude some methods.
 function get_all_saliencies(
     alphabet,
     model,
