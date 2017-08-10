@@ -143,63 +143,7 @@ function LRP(gmodule, R, modified)
     local node = toposorted[i]
     local relevance = relevances[node]
 
-    --print(torch.typename(node.module))
-    --[[
-    if node.module ~= nil then
-      if type(relevance) == 'table' then
-        for i=1,#relevance do
-          print('Initial 316', i, relevance[i][316][316])
-        end
-      elseif relevance:size(2) == 2000 then
-        print('Initial 316', relevance[316][1316])
-      elseif relevance:size(2) == 4 then
-        print('Initial 316', relevance[316][3][316])
-      else
-        print('Initial 316', relevance[316][316])
-      end
-    end
-    ]]
     local input_relevance = relevance_propagate(node, relevance, modified)
-    --[[
-    if node.module ~= nil then
-      if type(input_relevance) == 'table' then
-        for i=1,#input_relevance do
-          if input_relevance[i]:size(2) == 2000 then
-            print('Result 316', i, input_relevance[i][316][1316], node.input[i][316][1316])
-          else
-            print('Result 316', i, input_relevance[i][316][316], node.input[i][316][316])
-          end
-        end
-      elseif input_relevance:size(2) == 2000 then
-        print('Result 316', input_relevance[316][1316], node.input[1][316][1316])
-      elseif input_relevance:size(2) == 4 then
-        print('Result 316', input_relevance[316][3][316], node.input[1][316][3][316])
-      else
-        print('Result 316', input_relevance[316][316], node.input[1][316][316])
-      end
-    end
-    ]]
-    --[[
-    if node.module ~= nil then
-      if type(input_relevance) == 'table' then
-        print(node.input)
-        local total_sum = 0
-        for i=1,#input_relevance do
-          local l = get_max(input_relevance[i])
-          local m, coord = l[1], l[2]
-          if node.input ~= nil then
-            print('Result max', i, {m, coord}, node.input[i][coord])
-          else
-            print('Result max', i, {m, coord})
-          end
-        end
-      else
-        local l = get_max(input_relevance)
-        local m, coord = l[1], l[2]
-        print('Result max', input_relevance[coord], node.input[1][coord])
-      end
-    end
-    ]]
 
     if #node.mapindex == 1 then
       -- Case 1: Select node

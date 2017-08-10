@@ -47,9 +47,6 @@ function sensitivity_analysis(
     first_hidden[i]:resize(opt.rnn_size, opt.rnn_size):zero()
   end
 
-  print('FIRST CHECKPOINT')
-  printMemProfile()
-
   -- Forward pass
   local rnn_state = first_hidden
   local encoder_inputs = {}
@@ -63,9 +60,6 @@ function sensitivity_analysis(
     encoder_inputs[t] = encoder_input
     rnn_state = encoder_clones[t]:forward(encoder_input)
   end
-
-  print('SECOND CHECKPOINT')
-  printMemProfile()
 
   -- Backward pass
 
@@ -81,9 +75,6 @@ function sensitivity_analysis(
 
   -- We just inverted stdev[1] so undo that
   stdev[1]:cinv()
-
-  print('THIRD CHECKPOINT')
-  printMemProfile()
 
   -- Initialize.
   local rnn_state_gradients = {}

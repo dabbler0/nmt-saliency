@@ -168,7 +168,6 @@ function lars(X_in, Y_in, X_valid_in, Y_valid_in, lasso_path)
       recovering = false
 
       if gamma == math.huge then
-        print('Breaking due to some error.')
         break
       end
 
