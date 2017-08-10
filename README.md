@@ -21,6 +21,6 @@ In these examples saliency was taken at the end of each table with respect to al
 
 Some select examples from the negated clause neuron:
 
-![Recognizing the word "not" activating](https://rawgithub.com/dabbler0/saliency/master/saliency-example-1.png)
-![Recognizing the word "excluding" activating](https://rawgithub.com/dabbler0/saliency/master/saliency-example-2.png)
-![Recognizing the word "as" and a comma stopping](https://rawgithub.com/dabbler0/saliency/master/saliency-example-3.png)
+![Recognizing the word "not" activating](https://github.com/dabbler0/saliency/master/saliency-example-1.png?raw=true)
+![Recognizing the word "excluding" activating](https://github.com/dabbler0/saliency/master/saliency-example-2.png?raw=true)
+![Recognizing the word "as" and a comma stopping](https://github.com/dabbler0/saliency/master/saliency-example-3.png?raw=true)
