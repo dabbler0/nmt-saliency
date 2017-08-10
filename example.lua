@@ -192,6 +192,9 @@ function get_all_saliencies(
   print('lrp elapsed:', lrp_elapsed_time)
   start = os.clock()
 
+  --[[
+  -- Not using LIME due to speed performance
+  -- Uncomment to use LIME
   local lime_saliency = lime(
       alphabet,
       model,
@@ -199,7 +202,7 @@ function get_all_saliencies(
       sentence,
       2, -- 1000 data points for lime should be more than enough.
       perturbation_size
-  )
+  )]]
 
   local lime_elapsed_time = os.clock() - start
   print('lime elapsed:', lime_elapsed_time)
@@ -218,7 +221,7 @@ function get_all_saliencies(
     ['saliencies'] = {
       ['sgrad'] = deep_totable(smooth_grad_saliency),
       ['lrp'] = deep_totable(layerwise_relevance_saliency),
-      ['lime'] = deep_totable(lime_saliency),
+      --['lime'] = deep_totable(lime_saliency), -- Uncomment this to use LIME
       ['erasure'] = deep_totable(erasure_saliency),
       ['sa'] = deep_totable(sa),
     },
@@ -294,8 +297,8 @@ function main()
       opt.perturbation_size
     )
 
-    -- Select a neuron to inspect
-    local neuron = tonumber(io.read())
+    -- Select a neuron to inspect; zero-indexed
+    local neuron = tonumber(io.read()) + 1
 
 
     -- Print out the activations for this neuron first
