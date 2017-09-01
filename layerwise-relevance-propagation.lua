@@ -26,6 +26,96 @@ local sequence_inputs = {}
 local input_relevances = torch.CudaTensor()
 local true_final = torch.CudaTensor()
 local initial_relevances = {}
+local context = torch.CudaTensor()
+local target_inputs = {}
+
+function LRP_decoder_saliency(
+    alphabet,
+    model,
+    normalizer,
+    sentence,
+    target)
+
+  local opt, encoder_clones, lookup = model.opt, model.clones, model.lookup
+
+  -- Construct beginning hidden state
+  for i=1,2*opt.num_layers do
+    first_hidden[i] = first_hidden[i] or torch.CudaTensor()
+    first_hidden[i]:resize(opt.rnn_size, opt.rnn_size):zero()
+  end
+  for i=2*opt.num_layers+1,#first_hidden do
+    first_hidden[i] = nil
+  end
+
+  -- Forward encoder pass
+  local rnn_state = first_hidden
+  context:resize(rnn_size, #sentence)
+  for t=1,#sentence do
+    sequence_inputs[t] = sequence_inputs[t] or torch.CudaTensor()
+    sequence_inputs[t]:resize(1, opt.rnn_size)
+    sequence_inputs[t]:copy(
+      lookup:forward(torch.CudaTensor{sentence[t]})
+    )
+    sequence_inputs[t] = sequence_inputs[t]:expand(opt.rnn_size, opt.rnn_size)
+
+    local encoder_input = {sequence_inputs[t]}
+    append_table(encoder_input, rnn_state)
+    rnn_state = encoder_clones[t]:forward(encoder_input)
+    context[t]:copy(rnn_state[#rnn_state])
+  end
+
+  -- Forward decoder pass
+  for t=1,#target do
+    target_inputs[t] = target_inputs[t] or torch.CudaTensor()
+    target_inputs[t]:resize(1, opt.rnn_size)
+    target_inputs[t]:copy(
+      lookup:forward(torch.CudaTensor{sentence[t]})
+    )
+    target_inpputs[t] = target_inputs[t]:expand(opt.rnn_size, opt.rnn_size)
+
+    local decoder_input = {target_inputs[t], context, table.unpack(rnn_state)}
+    out = decoder_clones[t]:forward(decoder_input)
+
+    rnn_state = {}
+    if model_opt.input_feed == 1 then
+      table.isnert(rnn_state, out[#out])
+    end
+    for j=1,#out-1 do
+      table.insert(rnn_state, out[j])
+    end
+  end
+
+  -- Relevance
+  for i=1,2*opt.num_layers do
+    initial_relevances[i] = initial_relevances[i] or torch.CudaTensor()
+    initial_relevances[i]:resize(opt.rnn_size, opt.rnn_size):zero()
+  end
+
+  true_final:resizeAs(rnn_state[#rnn_state][1]):
+    copy(rnn_state[#rnn_state][1]):
+    cdiv(normalizer[2][1])
+  initial_relevances[2*opt.num_layers]:zero():diag(true_final)
+
+  input_relevances:resize(#sentence, opt.rnn_size):zero()
+
+  local relevance_state = initial_relevances
+  for t=#sentence,1,-1 do
+    relevance_state = LRP(encoder_clones[t], relevance_state, modified)
+
+    -- The input relevance state should now be a 500x500 vector representing
+    -- total relevance over the word embedding. Summing over the second
+    -- dimension will get us the desired relevances.
+    input_relevances:narrow(1, t, 1):sum(relevance_state[1], 2)
+    relevance_state = slice_table(relevance_state, 2)
+  end
+
+  local affinities = {}
+  for i=1,#sentence do
+    affinities[i] = input_relevances[i]
+  end
+
+  return affinities
+end
 
 function LRP_saliency(
     alphabet,
@@ -403,6 +493,35 @@ local denom = torch.CudaTensor()
 local denom_sign = torch.CudaTensor()
 local denom_sign_clone = torch.CudaTensor()
 
+function apply_linear_lrp(input, relevance, use_bias, output, bias, weight, Rin)
+  local b = relevance:size(1)
+
+  -- Perform LRP propagation
+  -- First, determine sign.
+  denom:resizeAs(output):copy(output)
+
+  fits(denom, denom_sign, denom_sign_clone)
+
+  -- Add epsilon to the denominator and invert
+  denom:add(denom_sign:mul(eps)):cinv():cmul(relevance)
+
+  -- Compute main 'messages'
+  Rin:resizeAs(input):zero()
+  Rin:addmm(0, Rin, 1, denom, weight)
+  Rin:cmul(input)
+
+  -- Add numerator stabilizer
+  Rin:add(denom_sign:cmul(denom):sum(2):div(D):view(b, 1):expandAs(Rin))
+
+  -- Add bias term if present and desired
+  if use_bias and bias then
+    Rin:add(denom:cmul(bias:view(1, M):expandAs(denom)):sum(2):div(D):view(b, 1):expandAs(Rin))
+  end
+
+  -- Return
+  return Rin
+end
+
 function nn.Linear:lrp(input, relevance, use_bias)
   -- Allocate memory we need for LRP here.
   if self.initialized_lrp == nil then
@@ -419,31 +538,9 @@ function nn.Linear:lrp(input, relevance, use_bias)
     self.Rin = self.gradInput --torch.CudaTensor()
   end
 
-  local b = relevance:size(1)
+  -- Apply linear LRP
+  apply_linear_lrp(input, relevance, use_bias, self.output, self.bias, self.weight, self.Rin)
 
-  -- Perform LRP propagation
-  -- First, determine sign.
-  self.denom:resizeAs(self.output):copy(self.output)
-
-  fits(self.denom, self.denom_sign, self.denom_sign_clone)
-
-  -- Add epsilon to the denominator and invert
-  self.denom:add(self.denom_sign:mul(eps)):cinv():cmul(relevance)
-
-  -- Compute main 'messages'
-  self.Rin:resizeAs(input):zero()
-  self.Rin:addmm(0, self.Rin, 1, self.denom, self.weight)
-  self.Rin:cmul(input)
-
-  -- Add numerator stabilizer
-  self.Rin:add(self.denom_sign:cmul(self.denom):sum(2):div(self.D):view(b, 1):expandAs(self.Rin))
-
-  -- Add bias term if present and desired
-  if use_bias and self.bias then
-    self.Rin:add(self.denom:cmul(self.bias:view(1, self.M):expandAs(self.denom)):sum(2):div(self.D):view(b, 1):expandAs(self.Rin))
-  end
-
-  -- Return
   return self.Rin
 end
 
@@ -484,4 +581,103 @@ function nn.CAddTable:lrp(input, relevance)
   end
 
   return self.results
+end
+
+-- TODO: implement JoinTable, MM, and Sum.
+--[[
+
+In our case, MM is used like so: we have a matrix of size
+
+batch x len x 1 (attention given to each
+
+And a matrix of size
+
+batch x len x rnn_size
+
+And we batch multiply them batchwise, with each batch being a multiplcation (1 x len) * (len x rnn_size)
+
+to yield (1 x rnn_size)
+
+What we want to do is redistrubte weight onto the original matrix of size batch x len x rnn_size
+
+with sum of relevance same as input and ratios equal to contributions.
+
+For each batch, (1 x len)
+]]
+
+function nn.MM:lrp(input, relevance)
+  if self.initialized_lrp == nil then
+    self.initialized_lrp = true
+
+    self.results = self.gradInput
+  end
+
+  -- Make input relevances the proper size
+  for i=1,#input do
+    self.results[i] = self.results[i] or input[i].new()
+    self.results[i]:resizeAs(input[i])
+  end
+  for i=#input+1,#self.results do
+    self.results[i] = nil
+  end
+
+  -- First, test to see if we are an attention node.
+  -- We consider attention nodes to be like linear nodes with the attention as the weight.
+  true_attention_index = -1
+  for i=1,#input do
+    if inputs[i]:size(3) == 1 then
+      true_attention_index = i
+      break
+    end
+  end
+
+  if true_attention_index == -1 then
+    -- We are not an attention node. In this case, we are an attention-detecting node
+    -- (the general global attention dot product). This should always have zero relevance anyway,
+    -- so propagate nothing to the inputs.
+    for i=1,#input do
+      self.results[i]:zero()
+    end
+
+  else
+    -- We are an attention node. So propagate back through the non-true attention index,
+    -- pretending the true attention index is the weight
+    local psuedoweight = input[true_attention_index]
+
+    for i=1,#input do
+      if i ~= true_attention_index then
+        -- output, bias, weight, rin
+        apply_linear_lrp(input[i], self.relevance, false, self.output, nil, pseudoweight, self.results[i])
+      else
+        self.results[i]:zero()
+      end
+    end
+  end
+
+  return self.results
+end
+
+function nn.Sum:lrp(input, relevance)
+  if self.initialized_lrp == nil then
+    self.initialized_lrp = true
+
+    self.Rin = self.gradInput
+  end
+
+  local size = input:size()
+  local dimension = self:_getPositiveDimension(input)
+
+  size[dimension] = 1
+
+  self.Rin:resizeAs(input)
+
+  relevance:view(size):expandAs(input)
+
+  -- Add stabilizer and invert for denominator
+  relevance:copy(self.output:view(size):expandAs(input)):add(eps):cinv()
+
+  -- Multiply by scaling factors and relevance
+  self.Rin:cmul(input):cmul(relevance)
+
+  return self.Rin
 end
