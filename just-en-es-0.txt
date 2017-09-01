@@ -1,0 +1,3 @@
+/data/sls/scratch/abau/seq2seq-comparison/models/un/en-es-0_final.t7
+/data/sls/scratch/abau/seq2seq-comparison/input-data/un/en-es/0.src.dict
+/data/sls/scratch/abau/seq2seq-comparison/descriptions/un/en-es-0.t7
